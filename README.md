@@ -53,7 +53,7 @@
 
 - 第一階段 15:00
 - 第二階段 16:00
-- 第三階段 17:00  
+- 第三階段 17:00
 
 ### 站點
 
@@ -164,7 +164,7 @@
 範例格式如下
 
 ```json=
-[   
+[
     {
         "name": "IZCC",
         "point": 100,
@@ -177,6 +177,119 @@
     },
 ]
 ```
+
+## 環境設置與開發
+
+### 前置需求
+
+- Python 3.11+
+- Discord 應用程式（用於 OAuth2 登入）
+- （選擇性）Docker & Docker Compose
+- （選擇性）PostgreSQL（開發可使用 SQLite）
+
+### 環境變數
+
+在 `flask/app/` 下建立 `.env` 檔案，填入以下變數：
+
+| 變數                      | 必填   | 預設值                          | 說明                                                |
+| ------------------------- | ------ | ------------------------------- | --------------------------------------------------- |
+| `TOKEN`                   | **是** | 無                              | Discord Bot Token                                   |
+| `CLIENT_ID`               | **是** | 無                              | Discord OAuth2 Client ID                            |
+| `CLIENT_SECRET`           | **是** | 無                              | Discord OAuth2 Client Secret                        |
+| `REDIRECT_URI`            | 否     | `/oauth/callback`               | Discord OAuth2 回調網址                             |
+| `SQLALCHEMY_DATABASE_URI` | 否     | SQLite (`sqlite:///db.sqlite3`) | 資料庫連線字串（正式環境使用 PostgreSQL）           |
+| `PRODUCTION`              | 否     | `False`                         | 設為 `true` 啟用正式模式（使用 PostgreSQL、gevent） |
+
+範例 `.env` 檔：
+
+```env
+TOKEN=your_discord_bot_token
+CLIENT_ID=your_discord_oauth2_client_id
+CLIENT_SECRET=your_discord_oauth2_client_secret
+REDIRECT_URI=http://localhost:8080/oauth/callback
+SQLALCHEMY_DATABASE_URI=sqlite:///db.sqlite3
+PRODUCTION=false
+```
+
+> **注意**：`.env` 與 `.flaskenv` 皆已被 `.gitignore` 排除，不會進入版本控制。
+
+### Discord 應用程式設定
+
+1. 前往 [Discord Developer Portal](https://discord.com/developers/applications) 建立應用程式
+2. 建立一個 Bot，複製 Token 填入 `TOKEN`
+3. 在 OAuth2 頁面設定 Redirect URL（須與 `REDIRECT_URI` 一致）
+4. 複製 Client ID 與 Client Secret，分別填入 `CLIENT_ID`、`CLIENT_SECRET`
+
+### SSL 憑證
+
+`nginx/ssl.csr` 與 `nginx/ssl.key` 為佔位檔（內容為空），正式部署時須替换為有效的 SSL 憑證與金鑰。
+
+若僅在本機開發，可自行產生自簽憑證，或直接在 `nginx/nginx.conf` 中註解掉 `listen 443 ssl` 區塊，僅使用 HTTP（port 80）。
+
+### 網路架構
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       本機開發 (Local Dev)                       │
+│                                                                 │
+│  瀏覽器 ──http://localhost:8080──→ Flask (python main.py)        │
+│                                  (SQLite, port 8080)            │
+│                                                                 │
+│  所有服務都在同一個 process 中，不需 nginx 或 PostgreSQL。        │
+│  使用 SQLite 作為資料庫，簡單快速。                               │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                      Docker 部署                                │
+│                                                                 │
+│  瀏覽器 ──http://localhost:80──→ nginx (port 80)                │
+│             或                    (port 443, HTTPS)             │
+│          https://localhost:443    │                             │
+│                                  ↓                              │
+│                     uwsgi_pass flask:4011                       │
+│                                  │                              │
+│                                  ↓                              │
+│                      Flask (Gunicorn, port 8080)                │
+│                                  │                              │
+│                                  ↓                              │
+│                      PostgreSQL (db, port 5432)                 │
+│                                                                 │
+│  三個容器透過 Docker 內部網路連通，使用者只需訪問 nginx 的          │
+│  port 80/443，無需直接連接 Flask 或 PostgreSQL。                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 本地開發（無 Docker）
+
+```bash
+cd flask
+pip install -r requirements.txt
+python main.py
+```
+
+- Flask 開發伺服器啟動於 `http://localhost:8080`
+- 使用 SQLite 資料庫（無需安裝 PostgreSQL）
+- 無需 nginx，瀏覽器直接連接 Flask
+
+### Docker 部署
+
+```bash
+docker compose up -d
+```
+
+啟動三個服務：
+
+- **nginx**（port `80:80`, `443:443`）— 反向代理，接收瀏覽器請求後轉發給 Flask
+- **flask**（內部 port 8080）— Gunicorn + Flask 應用，nginx 透過 `flask:4011` 與之通訊
+- **db**（port `5432:5432`）— PostgreSQL，預設帳號 `user`／密碼 `password`／資料庫 `db`
+
+使用者只需訪問 `http://localhost`（port 80），由 nginx 統一處理流量。
+
+> **注意**：Docker 部署時需將環境變數傳入 flask 容器，可在 `docker-compose.yml` 的 `flask.environment` 中新增，或使用 `docker compose --env-file .env up -d`。
+
+### 捷運資料
+
+台北與新北捷運站點資料預設使用 TDX Transport Data API（公開 API，無需金鑰），已快取於 `flask/app/data/api_data.json`。
 
 ## 開發說明
 
@@ -210,7 +323,7 @@
 ```=
 {
     "S00000": "Success.",
-    
+
     "S00001": "Invalid Request.",
     "S00002": "Invalid Name.",
     "S00003": "Invalid Station.",
@@ -221,24 +334,24 @@
     "S00010": "Invalid Type.",
 
     "S10001": "Station Error",
-    
+
     "S20001": "Team Error",
     "S20002": "Team is imprisoned.",
     "S20003": "Team is already exist.",
     "S20004": "S20004": "Team start location is already defined.",
-    
+
     "S30001": "Player Error",
     "S30002": "Player is not in any team.",
-    
+
     "S40001": "Location Error",
     "S40002": "Location not reached.",
-    
+
     "S50001": "Mission Error",
     "S50002": "Mission not finished.",
     "S50003": "Mission already finished.",
 
     "S90001": "Localization file not found.",
-    
+
     "S99999": "Game Over"
 }
 ```
